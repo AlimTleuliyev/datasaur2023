@@ -1,93 +1,130 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
+import torchvision.transforms as transforms
+from torchvision import datasets
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms, models
-from sklearn.metrics import f1_score, accuracy_score
-from tqdm import tqdm
-import random
-import numpy as np
 import os
+from tqdm import tqdm
 import pandas as pd
-from torchvision.io import read_image
-from torchvision.transforms.functional import to_pil_image
+import argparse
 
+def load_model(model_path, model_name, device):
+    model = torch.hub.load('pytorch/vision:v0.13.0', model_name, weights = 'IMAGENET1K_V1')
+    if 'resnet' in model_name:
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, 2)
+    elif 'efficientnet' in model_name:
+        num_ftrs = model.classifier[1].in_features
+        model.classifier[1] = nn.Linear(num_ftrs, 2)
+    else:
+        raise NotImplementedError(f'{model_name} is not implemented')
+    
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    # model = model.to(device)
+    return model
 
-def set_seed(seed_value=42):
-    """Set seed for reproducibility."""
-    random.seed(seed_value)
-    np.random.seed(seed_value)
-    torch.manual_seed(seed_value)
+def prepare_dataloader(image_dir, batch_size, num_workers):
+    transform = transforms.Compose([
+        transforms.Resize((640, 640)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
-    # If you are using GPU
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed_value)
-        torch.cuda.manual_seed_all(seed_value)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+    dataset = datasets.ImageFolder(image_dir, transform=transform)
 
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-# Call the function at the start of your script
-set_seed(42)
+    # extract file names from dataset
+    image_names = []
+    for image_path, _ in dataset.imgs:
+        image_name = os.path.basename(image_path)
+        image_names.append(image_name)
+    
+    return image_names, dataloader
 
-INPUT_SIZE = 640
-device = torch.device('cuda') if torch.cuda.is_available() else 'cpu'
+# Voting ensemble by probability
+def vote_predict(models, dataloader, device):
+    """
+    This fucntion takes a list of torch models and a dataloader as input
+    and returns the predictions of the models by voting.
 
-# Data Transforms
-transform = transforms.Compose([
-    transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+    Notice: Voting is done by probability. Meaning to say, probabilities of each class across the models are
+    summed up, averaged, and the class with the highest probability is chosen.
 
+    Returns a list of predicted classes.
+    """
+    for model in models:
+        model.eval()
+    
+    predictions = []
+    with torch.no_grad():
+        for inputs, _ in tqdm(dataloader):
+            inputs = inputs.to(device)
+            outputs = torch.zeros(inputs.shape[0], 2).to(device)
+            for model in models:
+                outputs += model(inputs)
+            outputs /= len(models)
+            _, preds = torch.max(outputs, 1)
+            predictions.extend(preds.cpu().numpy())
+    return predictions
 
-def submit(model_name):
-    model = torch.hub.load('pytorch/vision:v0.13.0', model_name, weights='IMAGENET1K_V1')
-    num_ftrs = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(num_ftrs, 5)
-    model = model.to(device)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Image Classification")
+    parser.add_argument(
+        '--image_dir',
+        type=str,
+        help='Directory path to the images.'
+    )
+    parser.add_argument(
+        '--batch_size',
+        type=int,
+        default=8,
+        help='Number of images to process at once. Default is 8.'
+    )
+    parser.add_argument(
+        '--num_workers',
+        type=int,
+        default=4,
+        help='Number of worker threads to load data. Default is 4.'
+    )
+    parser.add_argument(
+        '--output_name',
+        type=str,
+        default='labels.csv',
+        help='Name of the output file. Default is labels.csv.'
+    )
 
-    # Load the trained model
-    model_name = os.path.join('models', model_name)
-    model.load_state_dict(torch.load(f'{model_name}_best_model.pth', map_location=torch.device('cpu')))
-    model.eval()
+    return parser.parse_args()
 
-    # Inference
-    file_indices = []
-    classes = []
+def main():
+    
+    args = parse_args()
+    
+    image_dir = args.image_dir
+    batch_size = args.batch_size
+    num_workers = args.num_workers
+    output_name = args.output_name
 
-    test_folder = 'test'
-    test_images = [f for f in os.listdir(test_folder) if f.endswith('.jpeg')]
+    model_path_names = [
+        ('models/best_model_resnet18.pth', 'resnet18'),
+        # ('models/best_model_resnet34.pth', 'resnet34'),
+        ('models/efficientnet_b0_best_model.pt', 'efficientnet_b0'),
+        # ('models/efficientnet_b1_best_model.pt', 'efficientnet_b1'),
+        ('models/efficientnet_b2_best_model.pt', 'efficientnet_b2'),
+        ('models/efficientnet_b3_best_model.pt', 'efficientnet_b3')
+    ]
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    for image_name in tqdm(test_images, desc="Inference"):
-        image_path = os.path.join(test_folder, image_name)
+    models = [
+        load_model(model_path, model_name, device)
+        for model_path, model_name in model_path_names
+    ]
+    
+    image_names, dataloader = prepare_dataloader(image_dir, batch_size, num_workers)
+    predictions = vote_predict(models, dataloader, device)
+    labels = pd.DataFrame({'image_name': image_names, 'class': predictions})
+    labels.to_csv(output_name, index=False)
 
-        # Load image and preprocess
-        image = to_pil_image(read_image(image_path))
-        image = transform(image).unsqueeze(0).to(device)
-
-        # Predict
-        with torch.no_grad():
-            output = model(image)
-            pred = output.argmax(dim=1).item()
-
-        # Store results
-        file_index = image_name.split('.jpeg')[0]
-        file_indices.append(file_index)
-        classes.append(pred)
-
-    # Create DataFrame and save to CSV
-    submission_df = pd.DataFrame({
-        'file_index': file_indices,
-        'class': classes
-    })
-
-    submission_df.to_csv(f'{model_name}_submission.csv', index=False)
-    print("Saved predictions to submission.csv")
-
-
-for model in ['efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2']:
-    submit(model)
-
-
-# TO DO: Ensemble
+if __name__ == '__main__':
+    main()
