@@ -111,9 +111,7 @@ def main():
 
     model_path_names = [
         ('models/best_model_resnet18.pth', 'resnet18'),
-        # ('models/best_model_resnet34.pth', 'resnet34'),
         ('models/efficientnet_b0_best_model.pt', 'efficientnet_b0'),
-        # ('models/efficientnet_b1_best_model.pt', 'efficientnet_b1'),
         ('models/efficientnet_b2_best_model.pt', 'efficientnet_b2'),
         ('models/efficientnet_b3_best_model.pt', 'efficientnet_b3')
     ]
