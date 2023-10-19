@@ -19,8 +19,12 @@ def load_model(model_path, model_name, device):
     else:
         raise NotImplementedError(f'{model_name} is not implemented')
     
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    # model = model.to(device)
+    if device.type == 'cpu':
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    elif device.type == 'cuda':
+        model.load_state_dict(torch.load(model_path))
+        model = model.to(device)
+    
     return model
 
 def prepare_dataloader(image_dir, batch_size, num_workers):
