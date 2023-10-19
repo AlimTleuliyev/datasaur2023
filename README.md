@@ -57,4 +57,14 @@ Utilize 'inference.py' for performing inference. The script accepts four argumen
 python inference.py --image_dir data_directory_with_images_to_classify --batch_size 32 --num_workers 4 --output_name results.csv
 ```
 
-Your results will be saved in a structured CSV file with the specified name. We are confident in the robustness and accuracy of our solution and believe it will substantially contribute to advancements in image classification tasks. For further inquiries or support, please feel free to raise an issue in this repository.
+Your results will be saved in a structured CSV file with the specified name.
+
+## Contributors
+
+We extend our heartfelt thanks to the incredible team members who contributed their expertise and hard work to make this project a success.
+
+- **Alim Tleuliyev**: [alim.tleuliyev@nu.edu.kz](mailto:alim.tleuliyev@nu.edu.kz)
+- **Alikhan Nurkamal**: [alikhan.nurkamal@nu.edu.kz](mailto:alikhan.nurkamal@nu.edu.kz)
+- **Beksultan Tleutayev**: [beksultan.tleutayev@nu.edu.kz](mailto:beksultan.tleutayev@nu.edu.kz)
+
+Feel free to reach out to any of the contributors for questions or feedback concerning the project. We are committed to fostering an open, collaborative environment and welcome any contributions or insights from the community.
