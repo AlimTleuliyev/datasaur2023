@@ -1,4 +1,4 @@
-# Enhanced Solution for DataSaur 2023 Hackathon
+# Enhanced Solution for DataSaur 2023 Hackathon by TeamVici
 
 ## Overview
 Welcome to our comprehensive solution repository for the 2023 DataSaur Hackathon, specifically designed for the [Kaggle competition: Classify images of Automobiles whether they are authentic or fictitious](https://www.kaggle.com/competitions/case3-datasaur-photo/overview). Our innovative approach involves advanced model training and ensemble techniques to accurately distinguish between authentic and fictitious automobile images.
