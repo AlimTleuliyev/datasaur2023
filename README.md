@@ -55,7 +55,11 @@ Utilize 'inference.py' for performing inference. The script accepts five argumen
 
 **Command Example:**
 ```bash
-python inference.py --image_dir data_directory_with_images_to_classify --batch_size 32 --num_workers 4 --output_name results.csv
+python inference.py --task binary --image_dir data_directory_with_images_to_classify --batch_size 32 --num_workers 4 --output_name results.csv
+```
+OR
+```bash
+python inference.py --task multiclass --image_dir data_directory_with_images_to_classify --batch_size 32 --num_workers 4 --output_name results.csv
 ```
 
 Your results will be saved in a structured CSV file with the specified name.
