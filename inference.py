@@ -8,14 +8,18 @@ from tqdm import tqdm
 import pandas as pd
 import argparse
 
-def load_model(model_path, model_name, device):
-    model = torch.hub.load('pytorch/vision:v0.13.0', model_name, weights = 'IMAGENET1K_V1')
+
+def load_model(model_path, model_name, device, task=None):
+    model = torch.hub.load('pytorch/vision:v0.13.0', model_name, weights='IMAGENET1K_V1')
     if 'resnet' in model_name:
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, 2)
     elif 'efficientnet' in model_name:
         num_ftrs = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(num_ftrs, 2)
+        if task == 'binary':
+            model.classifier[1] = nn.Linear(num_ftrs, 2)
+        else:
+            model.classifier[1] = nn.Linear(num_ftrs, 5)
     else:
         raise NotImplementedError(f'{model_name} is not implemented')
     
@@ -26,6 +30,7 @@ def load_model(model_path, model_name, device):
         model = model.to(device)
     
     return model
+
 
 def prepare_dataloader(image_dir, batch_size, num_workers):
     transform = transforms.Compose([
@@ -45,6 +50,7 @@ def prepare_dataloader(image_dir, batch_size, num_workers):
         image_names.append(image_name)
     
     return image_names, dataloader
+
 
 # Voting ensemble by probability
 def vote_predict(models, dataloader, device):
@@ -72,12 +78,35 @@ def vote_predict(models, dataloader, device):
             predictions.extend(preds.cpu().numpy())
     return predictions
 
+
+def multiclass_predict(model, dataloader, device):
+    model.eval()
+
+    predictions = []
+
+    with torch.no_grad():
+        for inputs, _ in tqdm(dataloader):
+            inputs = inputs.to(device)
+            output = model(inputs)
+            preds = output.argmax(dim=1).cpu().tolist()
+            predictions.extend(preds)
+
+    return predictions
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Image Classification")
     parser.add_argument(
+        '--task',
+        type=str,
+        help='Binary or multiclass classification task. Enter either "binary" or "multiclass"',
+        required=True
+    )
+    parser.add_argument(
         '--image_dir',
         type=str,
-        help='Directory path to the images.'
+        help='Directory path to the images.',
+        required=True
     )
     parser.add_argument(
         '--batch_size',
@@ -100,33 +129,94 @@ def parse_args():
 
     return parser.parse_args()
 
+
 def main():
     
     args = parse_args()
-    
+
+    task = args.task.lower()
     image_dir = args.image_dir
     batch_size = args.batch_size
     num_workers = args.num_workers
     output_name = args.output_name
 
-    model_path_names = [
-        ('models/best_model_resnet18.pth', 'resnet18'),
-        ('models/efficientnet_b0_best_model.pt', 'efficientnet_b0'),
-        ('models/efficientnet_b2_best_model.pt', 'efficientnet_b2'),
-        ('models/efficientnet_b3_best_model.pt', 'efficientnet_b3')
-    ]
-    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    models = [
-        load_model(model_path, model_name, device)
-        for model_path, model_name in model_path_names
-    ]
-    
     image_names, dataloader = prepare_dataloader(image_dir, batch_size, num_workers)
-    predictions = vote_predict(models, dataloader, device)
-    labels = pd.DataFrame({'image_name': image_names, 'class': predictions})
-    labels.to_csv(output_name, index=False)
+
+    if task == 'binary':
+        model_path_names = [
+            ('models/best_model_resnet18.pth', 'resnet18'),
+            ('models/efficientnet_b0_best_model.pt', 'efficientnet_b0'),
+            ('models/efficientnet_b2_best_model.pt', 'efficientnet_b2'),
+            ('models/efficientnet_b3_best_model.pt', 'efficientnet_b3')
+        ]
+
+        models = [
+            load_model(model_path, model_name, device, task=task)
+            for model_path, model_name in model_path_names
+        ]
+
+        predictions = vote_predict(models, dataloader, device)
+
+    elif task == 'multiclass':
+        LABELS = {
+            0: 'Correct',
+            1: 'Not on the brake stand',
+            2: 'From the screen',
+            3: 'From the screen + photoshop',
+            4: 'Photoshop'
+        }
+
+        model_path_names = [
+            ('models/efficientnet_b0_multiclass.pth', 'efficientnet_b0'),
+            ('models/efficientnet_b1_multiclass.pth', 'efficientnet_b1'),
+            ('models/efficientnet_b2_multiclass.pth', 'efficientnet_b2')
+        ]
+
+        models = [
+            load_model(model_path, model_name, device, task=task)
+            for model_path, model_name in model_path_names
+        ]
+
+        binary_predictions = {
+            'efficientnet_b0': [],
+            'efficientnet_b1': [],
+            'efficientnet_b2': []
+        }
+        multiclass_predictions = {
+            'efficientnet_b0': [],
+            'efficientnet_b1': [],
+            'efficientnet_b2': []
+        }
+
+        for model, (_, model_name) in zip(models, model_path_names):
+            preds = multiclass_predict(model, dataloader, device)
+
+            multiclass_labels = [LABELS[pred] for pred in preds]
+            multiclass_predictions[model_name] = multiclass_labels
+
+            binary_labels = [1 if pred > 0 else 0 for pred in preds]
+            binary_predictions[model_name] = binary_labels
+
+    else:
+        raise ValueError(f'Current state does not handle your task: {task}')
+
+    if task == 'binary':
+        result_df = pd.DataFrame(
+            {'image_name': image_names,
+             'class': predictions}
+        )
+    else:
+        result_df = pd.DataFrame({'image_name': image_names})
+
+        for key, val in binary_predictions.items():
+            result_df[key + '_b'] = val
+
+        for key, val in multiclass_predictions.items():
+            result_df[key + '_m'] = val
+
+    result_df.to_csv(output_name, index=False)
+
 
 if __name__ == '__main__':
     main()

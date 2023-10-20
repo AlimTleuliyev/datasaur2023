@@ -46,11 +46,12 @@ data_directory_with_images_to_classify
 ```
 
 ### Execution
-Utilize 'inference.py' for performing inference. The script accepts four arguments:
-- `image_dir`: The path to the directory containing images to classify.
-- `batch_size`: The batch size utilized during inference.
-- `num_workers`: The number of workers for the dataloader.
-- `output_name`: The desired name of the output file.
+Utilize 'inference.py' for performing inference. The script accepts five arguments:
+- `task` **(required)**: What task to perform: binary or multiclass classification.
+- `image_dir` **(required)**: The path to the directory containing images to classify.
+- `batch_size`: The batch size utilized during inference. Default value is 8.
+- `num_workers`: The number of workers for the dataloader. Default value is 4.
+- `output_name`: The desired name of the output file. It should be a **CSV file**. Default is *labels.csv*.
 
 **Command Example:**
 ```bash
@@ -65,6 +66,6 @@ We extend our heartfelt thanks to the incredible team members who contributed th
 
 - **Alim Tleuliyev**: [alim.tleuliyev@nu.edu.kz](mailto:alim.tleuliyev@nu.edu.kz)
 - **Alikhan Nurkamal**: [alikhan.nurkamal@nu.edu.kz](mailto:alikhan.nurkamal@nu.edu.kz)
-- **Beksultan Tleutayev**: [beksultan.tleutayev@nu.edu.kz](mailto:beksultan.tleutayev@nu.edu.kz)
+- **Beksultan Tleutayev**: [btleutayev@gmail.com](mailto:btleutayev@gmail.com)
 
 Feel free to reach out to any of the contributors for questions or feedback concerning the project. We are committed to fostering an open, collaborative environment and welcome any contributions or insights from the community.
