@@ -28,7 +28,7 @@ pip install -r requirements.txt
 ### Model Weights
 To utilize our pre-trained models, follow these steps:
 1. Create a 'models' directory within the cloned repository.
-2. Access and download the pre-trained weights via [this link](https://drive.google.com/drive/folders/1zzWCFKr0LSLQsirM7jqb9_S5OscJt4f8?usp=sharing).
+2. Access and download the pre-trained weights (depending on your task: binary or multiclass classification) via [this link](https://drive.google.com/drive/folders/1zzWCFKr0LSLQsirM7jqb9_S5OscJt4f8?usp=sharing).
 3. Place the downloaded weights into the 'models' directory.
 
 ## Inference
