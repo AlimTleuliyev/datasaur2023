@@ -1,26 +1,37 @@
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
-from torchvision import datasets
-from torch.utils.data import DataLoader
-import os
-from tqdm import tqdm
+from PIL import Image
 import pandas as pd
+from tqdm import tqdm
+from glob import glob
 import argparse
-from utils import utils
+import os
 
+def load_model(model_path: str, model_name: str, device: torch.device, num_classes: int) -> nn.Module:
+    """
+    Loads a PyTorch model from a given path and modifies its last layer based on the model name and task.
 
-def load_model(model_path, model_name, device, task=None):
-    model = torch.hub.load('pytorch/vision:v0.13.0', model_name, weights='IMAGENET1K_V1')
+    Args:
+        model_path (str): Path to the saved PyTorch model.
+        model_name (str): Name of the PyTorch model to load.
+        device (torch.device): Device to load the model on (CPU or GPU).
+        task (str): Task to perform with the model (binary or multiclass).
+
+    Raises:
+        NotImplementedError: If the model name is not implemented or the task is not supported.
+
+    Returns:
+        nn.Module: The loaded PyTorch model with the last layer modified based on the model name and task.
+    """
+    model = torch.hub.load('pytorch/vision:v0.13.0', model_name)
     if 'resnet' in model_name:
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, 2)
     elif 'efficientnet' in model_name:
         num_ftrs = model.classifier[1].in_features
-        if task == 'binary':
-            model.classifier[1] = nn.Linear(num_ftrs, 2)
-        else:
-            model.classifier[1] = nn.Linear(num_ftrs, 5)
+        model.classifier[1] = nn.Linear(num_ftrs, num_classes)
     else:
         raise NotImplementedError(f'{model_name} is not implemented')
     
@@ -32,71 +43,86 @@ def load_model(model_path, model_name, device, task=None):
     
     return model
 
+class InferenceDataset(Dataset):
+        def __init__(self, images_path, transforms=None, images_format='jpeg'):
+            self.images_path = list(glob(os.path.join(images_path, f'*.{images_format}')))
+            if transforms:
+                self.transforms = transforms
 
-def prepare_dataloader(image_dir, batch_size, num_workers, images_format='jpeg'):
+        def __len__(self):
+            return len(self.images_path)
+
+        def __getitem__(self, index):
+            img_path = self.images_path[index]
+            image_name = os.path.basename(img_path)
+            with Image.open(img_path) as img:
+                if self.transforms:
+                    img = self.transforms(img)
+
+            return image_name, img
+
+
+def prepare_dataloader(image_dir: str, batch_size: int, num_workers: int, images_format: str = 'jpeg') -> DataLoader:
+    """
+    Prepares a PyTorch DataLoader for inference.
+
+    Args:
+        image_dir (str): Path to the directory containing images.
+        batch_size (int): Number of images per batch.
+        num_workers (int): Number of worker threads to use for loading data.
+        images_format (str, optional): Format of the images. Defaults to 'jpeg'.
+
+    Returns:
+        DataLoader: PyTorch DataLoader object for inference.
+    """
     transform = transforms.Compose([
         transforms.Resize((640, 640)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    dataset = utils.InferenceDataset(images_path=image_dir, transforms=transform, images_format=images_format)
+    dataset = InferenceDataset(images_path=image_dir, transforms=transform, images_format=images_format)
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    # extract file names from dataset
-    image_names = []
-    for image_name in os.listdir(image_dir):
-        if image_name.startswith('.'):
-            continue
-        image_names.append(image_name)
-
-    return image_names, dataloader
+    return dataloader
 
 
-# Voting ensemble by probability
-def vote_predict(models, dataloader, device):
+def predict(models: list, dataloader: DataLoader, device: torch.device, num_classes: int):
     """
-    This fucntion takes a list of torch models and a dataloader as input
-    and returns the predictions of the models by voting.
+    Predicts the class labels for the given input data using the provided models.
 
-    Notice: Voting is done by probability. Meaning to say, probabilities of each class across the models are
-    summed up, averaged, and the class with the highest probability is chosen.
+    Args:
+        models (list): A list of PyTorch models to use for prediction.
+        dataloader (DataLoader): A PyTorch DataLoader object containing the input data.
+        device (torch.device): The device to use for computation (e.g. 'cpu' or 'cuda').
+        num_classes (int): The number of classes in the classification problem.
 
-    Returns a list of predicted classes.
+    Returns:
+        Tuple: A tuple containing two lists - the first list contains the file names of the input data,
+        and the second list contains the predicted class labels for each input.
     """
     for model in models:
         model.eval()
     
+    image_names = []
     predictions = []
     with torch.no_grad():
-        for inputs in tqdm(dataloader):
+        for file_names, inputs in tqdm(dataloader):
             inputs = inputs.to(device)
-            outputs = torch.zeros(inputs.shape[0], 2).to(device)
+            outputs = torch.zeros(inputs.shape[0], num_classes).to(device)
             for model in models:
                 outputs += model(inputs)
             outputs /= len(models)
             _, preds = torch.max(outputs, 1)
             predictions.extend(preds.cpu().numpy())
-    return predictions
-
-
-def multiclass_predict(model, dataloader, device):
-    model.eval()
-
-    predictions = []
-
-    with torch.no_grad():
-        for inputs in tqdm(dataloader):
-            inputs = inputs.to(device)
-            output = model(inputs)
-            preds = output.argmax(dim=1).cpu().tolist()
-            predictions.extend(preds)
-
-    return predictions
-
+            image_names.extend(file_names)
+    return image_names, predictions
 
 def parse_args():
+    """
+    Parses command line arguments.
+    """
     parser = argparse.ArgumentParser(description="Image Classification")
     parser.add_argument(
         '--task',
@@ -105,7 +131,7 @@ def parse_args():
         required=True
     )
     parser.add_argument(
-        '--image_dir',
+        '--images_dir',
         type=str,
         help='Directory path to the images.',
         required=True
@@ -133,17 +159,42 @@ def parse_args():
 
 
 def main():
-    
     args = parse_args()
 
     task = args.task.lower()
-    image_dir = args.image_dir
+    images_dir = args.images_dir
     batch_size = args.batch_size
     num_workers = args.num_workers
     output_name = args.output_name
 
+    # Determine the number of classes based on the task
+    if task == 'binary':
+        num_classes = 2
+    elif task == 'multiclass':
+        num_classes = 5
+    else:
+        raise NotImplementedError(f'Task {task} is not supported')
+
+    # check if if images_dir exists
+    if not os.path.exists(images_dir):
+        raise FileNotFoundError(f'{images_dir} does not exist')
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    image_names, dataloader = prepare_dataloader(image_dir, batch_size, num_workers)
+    dataloader = prepare_dataloader(images_dir, batch_size, num_workers)
+
+    BINARY_LABELS = {
+        0: 'Authentic',
+        1: 'Fictitious'
+    }
+
+    MULTI_LABELS = {
+        0: 'Authentic',
+        1: 'Not on the brake stand',
+        2: 'From the screen',
+        3: 'From the screen + photoshop',
+        4: 'Photoshop'
+    }
+
 
     if task == 'binary':
         model_path_names = [
@@ -154,21 +205,19 @@ def main():
         ]
 
         models = [
-            load_model(model_path, model_name, device, task=task)
+            load_model(model_path, model_name, device, num_classes)
             for model_path, model_name in model_path_names
         ]
 
-        predictions = vote_predict(models, dataloader, device)
+        image_names, predictions = predict(models, dataloader, device, num_classes)
+        predictions = [BINARY_LABELS[pred] for pred in predictions]
+        
+        result_df = pd.DataFrame({
+            'image_name': image_names,
+            'class': predictions
+        }) 
 
     elif task == 'multiclass':
-        LABELS = {
-            0: 'Correct',
-            1: 'Not on the brake stand',
-            2: 'From the screen',
-            3: 'From the screen + photoshop',
-            4: 'Photoshop'
-        }
-
         model_path_names = [
             ('models/efficientnet_b0_multiclass.pth', 'efficientnet_b0'),
             ('models/efficientnet_b1_multiclass.pth', 'efficientnet_b1'),
@@ -176,49 +225,33 @@ def main():
         ]
 
         models = [
-            load_model(model_path, model_name, device, task=task)
+            load_model(model_path, model_name, device, num_classes)
             for model_path, model_name in model_path_names
         ]
 
-        binary_predictions = {
-            'efficientnet_b0': [],
-            'efficientnet_b1': [],
-            'efficientnet_b2': []
-        }
-        multiclass_predictions = {
-            'efficientnet_b0': [],
-            'efficientnet_b1': [],
-            'efficientnet_b2': []
-        }
+        binary_predictions = {}
+        multiclass_predictions = {}
 
         for model, (_, model_name) in zip(models, model_path_names):
-            preds = multiclass_predict(model, dataloader, device)
+            file_names, predictions = predict([model], dataloader, device, num_classes)
 
-            multiclass_labels = [LABELS[pred] for pred in preds]
+            multiclass_labels = [MULTI_LABELS[pred] for pred in predictions]
             multiclass_predictions[model_name] = multiclass_labels
 
-            binary_labels = [1 if pred > 0 else 0 for pred in preds]
+            binary_labels = [BINARY_LABELS[1] if pred > 0 else BINARY_LABELS[0] for pred in predictions]
             binary_predictions[model_name] = binary_labels
-
-    else:
-        raise ValueError(f'Current state does not handle your task: {task}')
-
-    if task == 'binary':
-        result_df = pd.DataFrame(
-            {'image_name': image_names,
-             'class': predictions}
-        )
-    else:
-        result_df = pd.DataFrame({'image_name': image_names})
+        
+        result_df = pd.DataFrame({'image_name': file_names})
 
         for key, val in binary_predictions.items():
             result_df[key + '_b'] = val
 
         for key, val in multiclass_predictions.items():
-            result_df[key + '_m'] = val
-
+            result_df[key + '_m'] = val        
+    else:
+        raise NotImplementedError(f'Task {task} is not supported')
+    
     result_df.to_csv(output_name, index=False)
-
 
 if __name__ == '__main__':
     main()
