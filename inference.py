@@ -7,6 +7,7 @@ import os
 from tqdm import tqdm
 import pandas as pd
 import argparse
+from utils import utils
 
 
 def load_model(model_path, model_name, device, task=None):
@@ -32,23 +33,24 @@ def load_model(model_path, model_name, device, task=None):
     return model
 
 
-def prepare_dataloader(image_dir, batch_size, num_workers):
+def prepare_dataloader(image_dir, batch_size, num_workers, images_format='jpeg'):
     transform = transforms.Compose([
         transforms.Resize((640, 640)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    dataset = datasets.ImageFolder(image_dir, transform=transform)
+    dataset = utils.InferenceDataset(images_path=image_dir, transforms=transform, images_format=images_format)
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     # extract file names from dataset
     image_names = []
-    for image_path, _ in dataset.imgs:
-        image_name = os.path.basename(image_path)
+    for image_name in os.listdir(image_dir):
+        if image_name.startswith('.'):
+            continue
         image_names.append(image_name)
-    
+
     return image_names, dataloader
 
 
@@ -68,7 +70,7 @@ def vote_predict(models, dataloader, device):
     
     predictions = []
     with torch.no_grad():
-        for inputs, _ in tqdm(dataloader):
+        for inputs in tqdm(dataloader):
             inputs = inputs.to(device)
             outputs = torch.zeros(inputs.shape[0], 2).to(device)
             for model in models:
@@ -85,7 +87,7 @@ def multiclass_predict(model, dataloader, device):
     predictions = []
 
     with torch.no_grad():
-        for inputs, _ in tqdm(dataloader):
+        for inputs in tqdm(dataloader):
             inputs = inputs.to(device)
             output = model(inputs)
             preds = output.argmax(dim=1).cpu().tolist()
@@ -99,7 +101,7 @@ def parse_args():
     parser.add_argument(
         '--task',
         type=str,
-        help='Binary or multiclass classification task. Enter either "binary" or "multiclass"',
+        help='Binary or multiclass classification task. Enter either binary or multiclass',
         required=True
     )
     parser.add_argument(
