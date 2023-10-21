@@ -39,10 +39,9 @@ For inference, images should be organized in a specific folder structure. Place 
 **Required Folder Structure:**
 ```
 data_directory_with_images_to_classify
-├── arbitrary_class_name
-│   ├── image1.jpg
-│   ├── image2.jpg
-│   ├── ...
+├── image1.jpeg
+├── image2.jpeg
+├── ...
 ```
 
 ### Execution
