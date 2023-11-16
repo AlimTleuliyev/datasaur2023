@@ -9,6 +9,7 @@ from glob import glob
 import argparse
 import os
 
+
 def load_model(model_path: str, model_name: str, device: torch.device, num_classes: int) -> nn.Module:
     """
     Loads a PyTorch model from a given path and modifies its last layer based on the model name and task.
@@ -42,6 +43,7 @@ def load_model(model_path: str, model_name: str, device: torch.device, num_class
         model = model.to(device)
     
     return model
+
 
 class InferenceDataset(Dataset):
         def __init__(self, images_path, transforms=None, images_format='jpeg'):
@@ -106,7 +108,12 @@ def predict(models: list, dataloader: DataLoader, device: torch.device, num_clas
         model.eval()
     
     image_names = []
+    
+    # Предсказания моделей (класс 0 или 1)
     predictions = []
+    # Вероятность принадлежности к предсказанному классу
+    probabilities = []
+    
     with torch.no_grad():
         for file_names, inputs in tqdm(dataloader):
             inputs = inputs.to(device)
@@ -114,10 +121,12 @@ def predict(models: list, dataloader: DataLoader, device: torch.device, num_clas
             for model in models:
                 outputs += model(inputs)
             outputs /= len(models)
-            _, preds = torch.max(outputs, 1)
+            logits, preds = torch.max(outputs, 1)
             predictions.extend(preds.cpu().numpy())
+            probabilities.extend(logits.cpu().numpy())
             image_names.extend(file_names)
-    return image_names, predictions
+    return image_names, predictions, probabilities
+
 
 def parse_args():
     """
@@ -209,12 +218,13 @@ def main():
             for model_path, model_name in model_path_names
         ]
 
-        image_names, predictions = predict(models, dataloader, device, num_classes)
+        image_names, predictions, probabilities = predict(models, dataloader, device, num_classes)
         predictions = [BINARY_LABELS[pred] for pred in predictions]
         
         result_df = pd.DataFrame({
             'image_name': image_names,
-            'class': predictions
+            'class': predictions,
+            'probability': probabilities
         }) 
 
     elif task == 'multiclass':
@@ -233,7 +243,7 @@ def main():
         multiclass_predictions = {}
 
         for model, (_, model_name) in zip(models, model_path_names):
-            file_names, predictions = predict([model], dataloader, device, num_classes)
+            file_names, predictions, probabilities = predict([model], dataloader, device, num_classes)
 
             multiclass_labels = [MULTI_LABELS[pred] for pred in predictions]
             multiclass_predictions[model_name] = multiclass_labels
@@ -247,7 +257,8 @@ def main():
             result_df[key + '_b'] = val
 
         for key, val in multiclass_predictions.items():
-            result_df[key + '_m'] = val        
+            result_df[key + '_m'] = val
+        
     else:
         raise NotImplementedError(f'Task {task} is not supported')
     
