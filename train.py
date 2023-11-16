@@ -9,6 +9,7 @@ import random
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import argparse
 
 
 def set_seed(seed_value=42):
@@ -255,20 +256,66 @@ def train_and_evaluate(model, train_loader, val_loader, device, config, model_na
     plt.show()
 
 
+def parse_args():
+    """
+    Parses command line arguments.
+    """
+    parser = argparse.ArgumentParser(description="Training")
+    parser.add_argument(
+        '--train_dir',
+        type=str,
+        help='Directory with training images.',
+        required=True
+    )
+    parser.add_argument(
+        '--val_dir',
+        type=str,
+        help='Directory with validation images.',
+        required=True
+    )
+    parser.add_argument(
+        '--batch_size',
+        type=int,
+        default=8,
+        help='Number of images to process at once. Default is 8.'
+    )
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        default=18,
+        help='Number of epochs to train models. Default is 18.'
+    )
+    parser.add_argument(
+        '--input_size',
+        type=int,
+        default=640,
+        help='Dimensionality of images after resizing. Default is 640x640.'
+    )
+
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    TRAIN_DIR = args.train_dir
+    VAL_DIR = args.val_dir
+    BATCH_SIZE = args.batch_size
+    INPUT_SIZE = args.input_size
+    EPOCHS = args.epochs
+
     set_seed(42)
 
     # Конфиги для тренировки модели
     # Укажите здесь путь к тренировочным и валидационным фотографиям
     # TEST_PATH можете оставить пустым...
     config = {
-        "TRAIN_PATH": '/kaggle/input/datasaur-train-valid-10/data_10/train',
-        "VAL_PATH": '/kaggle/input/datasaur-train-valid-10/data_10/valid',
-        "TEST_PATH": '',
-        "BATCH_SIZE": 8,
-        "INPUT_SIZE": 640,
+        "TRAIN_PATH": TRAIN_DIR,
+        "VAL_PATH": VAL_DIR,
+        "BATCH_SIZE": BATCH_SIZE,
+        "INPUT_SIZE": INPUT_SIZE,
         "NUM_WORKERS": 2,
-        "EPOCHS": 18,
+        "EPOCHS": EPOCHS,
         "WARMUP_LR": 0.00001,
         "LR0": 0.0001,
         "PATIENCE": 6,
@@ -286,14 +333,12 @@ def main():
     # Datasets and DataLoaders
     train_dataset = datasets.ImageFolder(config['TRAIN_PATH'], transform=transform)
     val_dataset = datasets.ImageFolder(config['VAL_PATH'], transform=transform)
-    # test_dataset = datasets.ImageFolder(config['TEST_PATH'], transform=transform)
 
     train_loader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'], shuffle=True, num_workers = config['NUM_WORKERS'])
     val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False, num_workers = config['NUM_WORKERS'])
-    # test_loader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'], shuffle=False, num_workers = config['NUM_WORKERS'])
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     
-    model_names = ['resnet18', 'resnet34', 'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3']
+    model_names = ['resnet18', 'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3']
     for model_name in model_names:
         model = initialize_model(model_name)
         model = model.to(device)

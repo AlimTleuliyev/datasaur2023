@@ -46,8 +46,10 @@ def load_model(model_path: str, model_name: str, device: torch.device, num_class
 
 
 class InferenceDataset(Dataset):
-        def __init__(self, images_path, transforms=None, images_format='jpeg'):
-            self.images_path = list(glob(os.path.join(images_path, f'*.{images_format}')))
+        def __init__(self, images_path, transforms=None):
+            # images_path - путь к папке с изображениями
+            # Мы считываем все изображения вне зависимости от их формата
+            self.images_path = list(glob(os.path.join(images_path, '*')))
             if transforms:
                 self.transforms = transforms
 
@@ -64,7 +66,7 @@ class InferenceDataset(Dataset):
             return image_name, img
 
 
-def prepare_dataloader(image_dir: str, batch_size: int, num_workers: int, images_format: str = 'jpeg') -> DataLoader:
+def prepare_dataloader(image_dir: str, batch_size: int, num_workers: int) -> DataLoader:
     """
     Prepares a PyTorch DataLoader for inference.
 
@@ -83,7 +85,7 @@ def prepare_dataloader(image_dir: str, batch_size: int, num_workers: int, images
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    dataset = InferenceDataset(images_path=image_dir, transforms=transform, images_format=images_format)
+    dataset = InferenceDataset(images_path=image_dir, transforms=transform)
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
