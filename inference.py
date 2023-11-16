@@ -119,13 +119,17 @@ def predict(models: list, dataloader: DataLoader, device: torch.device, num_clas
     with torch.no_grad():
         for file_names, inputs in tqdm(dataloader):
             inputs = inputs.to(device)
-            outputs = torch.zeros(inputs.shape[0], num_classes).to(device)
+            logits = torch.zeros(inputs.shape[0], num_classes).to(device)
             for model in models:
-                outputs += model(inputs)
-            outputs /= len(models)
-            logits, preds = torch.max(outputs, 1)
+                logits += model(inputs)
+            logits /= len(models)
+
+            # Применяю функцию softmax к выходам моделей
+            outputs = nn.functional.softmax(logits, dim=1)
+            # Переменная proba хранит вероятности, а preds - предсказанные классы
+            proba, preds = torch.max(outputs, 1)
             predictions.extend(preds.cpu().numpy())
-            probabilities.extend(logits.cpu().numpy())
+            probabilities.extend(proba.cpu().numpy())
             image_names.extend(file_names)
     return image_names, predictions, probabilities
 
