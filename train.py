@@ -10,6 +10,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 
+
 def set_seed(seed_value=42):
     """Set seed for reproducibility."""
     random.seed(seed_value)
@@ -21,6 +22,7 @@ def set_seed(seed_value=42):
         torch.cuda.manual_seed_all(seed_value)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
 
 def initialize_model(model_name):
     """Initialize a model from torchhub."""
@@ -36,6 +38,7 @@ def initialize_model(model_name):
 
     return model
 
+
 def calculate_metrics(labels, preds):
     """Calculate metrics like accuracy, precision, recall, and F1 score."""
     acc = accuracy_score(labels, preds)
@@ -43,6 +46,7 @@ def calculate_metrics(labels, preds):
     recall = recall_score(labels, preds)
     f1 = f1_score(labels, preds)
     return acc, precision, recall, f1
+
 
 def train(model, criterion, optimizer, train_loader, device, epoch):
     """
@@ -78,6 +82,7 @@ def train(model, criterion, optimizer, train_loader, device, epoch):
     print(f"Epoch {epoch} | Train Loss: {avg_loss} | F1: {f1} | Accuracy: {acc} | Precision: {precision} | Recall: {recall}")
     return avg_loss, acc, precision, recall, f1
 
+
 def validate(model, criterion, val_loader, device):
     """
     Validates the performance of the model on the validation set.
@@ -108,6 +113,7 @@ def validate(model, criterion, val_loader, device):
     print(f"Validation Loss: {avg_loss} | F1: {f1} | Accuracy: {acc} | Precision: {precision} | Recall: {recall}")
     return avg_loss, acc, precision, recall, f1
 
+
 def train_and_evaluate(model, train_loader, val_loader, device, config, model_name):
     """
     Trains and evaluates the given model using the provided train and validation data loaders, on the specified device.
@@ -126,6 +132,8 @@ def train_and_evaluate(model, train_loader, val_loader, device, config, model_na
     Returns:
     - None
     """
+
+
 def train_and_evaluate(model, train_loader, val_loader, device, config, model_name):
     if not os.path.exists(model_name):
         os.makedirs(model_name)
@@ -191,7 +199,6 @@ def train_and_evaluate(model, train_loader, val_loader, device, config, model_na
                 print(f'Early Stopping at Epoch {epoch}')
                 break
 
-
     # save last model
     print('Saving Last Model')
     torch.save(model.state_dict(), f'{model_name}/{model_name}_last_model.pt')
@@ -251,10 +258,13 @@ def train_and_evaluate(model, train_loader, val_loader, device, config, model_na
 def main():
     set_seed(42)
 
+    # Конфиги для тренировки модели
+    # Укажите здесь путь к тренировочным и валидационным фотографиям
+    # TEST_PATH можете оставить пустым...
     config = {
         "TRAIN_PATH": '/kaggle/input/datasaur-train-valid-10/data_10/train',
         "VAL_PATH": '/kaggle/input/datasaur-train-valid-10/data_10/valid',
-        "TEST_PATH": '/kaggle/input/labeled-test-datasaur/test',
+        "TEST_PATH": '',
         "BATCH_SIZE": 8,
         "INPUT_SIZE": 640,
         "NUM_WORKERS": 2,
@@ -266,7 +276,6 @@ def main():
         "WEIGHT_DECAY": 0.0003
     }
 
-
     # Data Transforms
     transform = transforms.Compose([
         transforms.Resize((config['INPUT_SIZE'], config['INPUT_SIZE'])),
@@ -277,11 +286,11 @@ def main():
     # Datasets and DataLoaders
     train_dataset = datasets.ImageFolder(config['TRAIN_PATH'], transform=transform)
     val_dataset = datasets.ImageFolder(config['VAL_PATH'], transform=transform)
-    test_dataset = datasets.ImageFolder(config['TEST_PATH'], transform=transform)
+    # test_dataset = datasets.ImageFolder(config['TEST_PATH'], transform=transform)
 
     train_loader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'], shuffle=True, num_workers = config['NUM_WORKERS'])
     val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False, num_workers = config['NUM_WORKERS'])
-    test_loader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'], shuffle=False, num_workers = config['NUM_WORKERS'])
+    # test_loader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'], shuffle=False, num_workers = config['NUM_WORKERS'])
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     
     model_names = ['resnet18', 'resnet34', 'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3']
@@ -290,22 +299,24 @@ def main():
         model = model.to(device)
         train_and_evaluate(model, train_loader, val_loader, device, config, model_name)
 
+        # Весь код ниже нужен для теста. Тест лучше проводить через inference.py
         # load best model
-        model.load_state_dict(torch.load(f'{model_name}/{model_name}_best_model.pt'))
-        model = model.to(device)
-
+        # model.load_state_dict(torch.load(f'{model_name}/{model_name}_best_model.pt'))
+        # model = model.to(device)
+        #
         # Testing on Test
-        with torch.no_grad():
-            all_preds = []
-            all_labels = []
-            for data, label in tqdm(test_loader, desc="Testing"):
-                data, label = data.to(device), label.to(device)
-                output = model(data)
-                all_preds.extend(output.argmax(1).cpu().numpy())
-                all_labels.extend(label.cpu().numpy())
-            acc, precision, recall, f1 = calculate_metrics(all_labels, all_preds)
-            print(f"Test Accuracy: {acc} | Precision: {precision} | Recall: {recall} | F1: {f1}")
-            print('Testing Complete for', model_name)
+        # with torch.no_grad():
+        #     all_preds = []
+        #     all_labels = []
+        #     for data, label in tqdm(test_loader, desc="Testing"):
+        #         data, label = data.to(device), label.to(device)
+        #         output = model(data)
+        #         all_preds.extend(output.argmax(1).cpu().numpy())
+        #         all_labels.extend(label.cpu().numpy())
+        #     acc, precision, recall, f1 = calculate_metrics(all_labels, all_preds)
+        #     print(f"Test Accuracy: {acc} | Precision: {precision} | Recall: {recall} | F1: {f1}")
+        #     print('Testing Complete for', model_name)
+
 
 if __name__ == '__main__':
     main()
