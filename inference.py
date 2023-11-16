@@ -142,7 +142,7 @@ def parse_args():
         required=True
     )
     parser.add_argument(
-        '--images_dir',
+        '--image_dir',
         type=str,
         help='Directory path to the images.',
         required=True
@@ -173,7 +173,7 @@ def main():
     args = parse_args()
 
     task = args.task.lower()
-    images_dir = args.images_dir
+    images_dir = args.image_dir
     batch_size = args.batch_size
     num_workers = args.num_workers
     output_name = args.output_name
