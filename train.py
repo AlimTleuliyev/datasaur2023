@@ -134,8 +134,6 @@ def train_and_evaluate(model, train_loader, val_loader, device, config, model_na
     - None
     """
 
-
-def train_and_evaluate(model, train_loader, val_loader, device, config, model_name):
     if not os.path.exists(model_name):
         os.makedirs(model_name)
 
